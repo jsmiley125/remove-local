@@ -9,12 +9,12 @@
 # /path/to/file1
 # /path/to/folder1
 
-# Function to evict a single file using brctl
+# Function to evict a single file using brctl,
+# redirecting output so that only our progress line is displayed.
 evict_file() {
     local file="$1"
-    # Optionally, you can comment out the following echo to reduce output.
-    # echo "Evicting local copy: $file"
-    brctl evict "$file"
+    # Running brctl silently to avoid flooding with output.
+    brctl evict "$file" > /dev/null 2>&1
 }
 
 # Usage message function.
@@ -25,7 +25,7 @@ usage() {
     exit 1
 }
 
-# Make sure at least one parameter is provided.
+# Ensure at least one parameter is provided.
 if [ "$#" -lt 1 ]; then
     usage
 fi
@@ -34,7 +34,7 @@ fi
 process_directory() {
     local dir="$1"
     files=()
-    # Build an array of all files found in the directory
+    # Build an array of all files found in the directory.
     while IFS= read -r file; do
         files+=("$file")
     done < <(find "$dir" -type f)
@@ -45,7 +45,7 @@ process_directory() {
         count=$((count + 1))
         evict_file "$file"
         elapsed=$(($(date +%s) - start_time))
-        # Calculate average time per file, remaining files and percentage.
+        # Avoid division by zero.
         if [ "$count" -gt 0 ]; then
             avg_time=$(echo "scale=2; $elapsed / $count" | bc)
             remaining=$(echo "scale=2; $avg_time * ($total_files - $count)" | bc)
@@ -55,7 +55,7 @@ process_directory() {
             remaining=0
             percent=0
         fi
-        # Print the progress on the same line.
+        # Print a single progress line (overwrite using carriage return).
         echo -ne "Progress for $dir: $count/$total_files files evicted, $percent% complete - Estimated time remaining: ${remaining} sec\r"
     done
     echo ""
@@ -73,7 +73,7 @@ if [ "$1" == "--csv" ] || [ "$1" == "-csv" ]; then
     fi
 
     echo "Processing CSV file: $CSV"
-    # Read the CSV file: assume one path per line or comma-separated.
+    # Read the CSV file (one path per line or comma-separated).
     while IFS=, read -r path || [ -n "$path" ]; do
         # Trim any leading/trailing whitespace.
         path=$(echo "$path" | sed 's/^[ \t]*//;s/[ \t]*$//')
@@ -86,6 +86,7 @@ if [ "$1" == "--csv" ] || [ "$1" == "-csv" ]; then
             process_directory "$path"
         elif [ -f "$path" ]; then
             evict_file "$path"
+            echo "Evicted file: $path"
         else
             echo "Warning: Path '$path' does not exist. Skipping."
         fi
@@ -105,4 +106,5 @@ if [ -d "$TARGET" ]; then
     process_directory "$TARGET"
 else
     evict_file "$TARGET"
+    echo "Evicted file: $TARGET"
 fi
